@@ -53,6 +53,7 @@ export function calcRealArea(
   refUnit: Unit,
   displayUnit?: Unit
 ): string | null {
+  if (displayUnit === 'px' && Number.isFinite(pixelArea)) return `${pixelArea.toFixed(2)} px²`;
   if (!reference || !Number.isFinite(refValue) || refValue <= 0 || !Number.isFinite(reference.pixelLength) || reference.pixelLength <= 0 || !Number.isFinite(pixelArea)) return null;
   const scale = refValue / reference.pixelLength;
   let realArea = pixelArea * scale * scale;

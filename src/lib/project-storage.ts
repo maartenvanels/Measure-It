@@ -56,7 +56,9 @@ export function validateProject(value: unknown): ProjectDocument {
     if (m.type === 'reference' || m.type === 'measure') {
       point(m.start); point(m.end);
       if (!finite(m.pixelLength) || m.pixelLength < 0) throw new Error('Invalid measurement length.');
-      if (m.surface === 'model') { point(m.start3D, 3); point(m.end3D, 3); }
+      if (m.surface === 'model' && !m.combinedFrom) { point(m.start3D, 3); point(m.end3D, 3); }
+      if (m.combineOperation != null && !['sum', 'area'].includes(m.combineOperation as string)) throw new Error('Invalid combine operation.');
+      if (m.combineOperation === 'area' && (!Array.isArray(m.combinedFrom) || m.combinedFrom.length !== 2 || !finite(m.combinedPixelArea) || m.combinedPixelArea < 0)) throw new Error('Invalid combined area.');
       if (m.combinedFrom != null && (!Array.isArray(m.combinedFrom) || !m.combinedFrom.every(id => typeof id === 'string'))) throw new Error('Invalid combined measurement.');
     } else if (m.type === 'area') {
       if (!Array.isArray(m.points) || !finite(m.pixelArea)) throw new Error('Invalid area.');
@@ -76,6 +78,13 @@ export function validateProject(value: unknown): ProjectDocument {
   });
   for (const m of measurements) {
     if (m.type === 'measure' && m.combinedFrom?.some(id => !measurementIds.has(id) || id === m.id)) throw new Error('Combined measurement contains missing parts.');
+    if (m.type === 'measure' && m.combinedFrom) {
+      if (new Set(m.combinedFrom).size !== m.combinedFrom.length) throw new Error('Duplicate combined dimensions.');
+      for (const id of m.combinedFrom) {
+        const part = measurements.find(item => item.id === id);
+        if (!part || part.type !== 'measure' || part.combinedFrom || part.surfaceId !== m.surfaceId || (part.surface ?? 'image') !== (m.surface ?? 'image')) throw new Error('Combined dimensions must belong to the same object.');
+      }
+    }
   }
   return { version: 3, id: raw.id, name: raw.name, objects, measurements: refreshCombinedTotals(measurements),
     updatedAt: finite(raw.updatedAt) ? raw.updatedAt : 0,

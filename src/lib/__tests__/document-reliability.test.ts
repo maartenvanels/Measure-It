@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { useMeasurementStore as measures } from '@/stores/useMeasurementStore';
 import { useSceneObjectStore as scene } from '@/stores/useSceneObjectStore';
 import { initializeDocumentHistory, resetDocumentHistory, undoDocument, redoDocument, beginDocumentEdit, endDocumentEdit, useDocumentHistory } from '../document-history';
-import { generateJSON, generateCSV, buildSimpleResolver } from '../export-utils';
+import { generateJSON, generateCSV, generateClipboardText, buildSimpleResolver } from '../export-utils';
 import { calcRealValue, calcRealArea } from '../calculations';
 import { validateProject, serializeObjects, prepareProject, type ProjectDocument } from '../project-storage';
 import { sourceMatrix, localPoint } from '../source-coordinates';
@@ -21,6 +21,34 @@ beforeEach(() => {
   resetDocumentHistory();
 });
 describe('measurement result contracts', () => {
+  it('combines two dimensions into an area and updates it after editing', () => {
+    measures.setState({ measurements: [line('a', 20), line('b', 30)] });
+    const result = measures.getState().combineMeasurements(['a', 'b'], 'area');
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.reason);
+    const area = () => measures.getState().measurements.find(m => m.id === result.id) as Measurement;
+    expect(area().combinedPixelArea).toBe(600);
+    measures.getState().updateMeasurement('a', { pixelLength: 40 });
+    expect(area().combinedPixelArea).toBe(1200);
+    const resolve = buildSimpleResolver(100, 'mm', line('ref', 10, { type: 'reference' }));
+    const exported = { ...area(), unitOverride: 'cm' as const };
+    expect(JSON.parse(generateJSON([exported], resolve))[0]).toMatchObject({ type: 'area', realArea: 1200, unit: 'cm²' });
+    expect(generateCSV([exported], resolve)).toContain('"1200",cm²');
+    expect(generateClipboardText([exported], resolve)).toContain('1200.00 cm²');
+    expect(calcRealArea(1200, line('ref', 10), 100, 'mm', 'cm')).toBe('1200.00 cm²');
+    expect(calcRealArea(1200, line('ref', 10), 100, 'mm', 'px')).toBe('1200.00 px²');
+    measures.getState().removeMeasurement('a');
+    expect(measures.getState().measurements.some(m => m.id === result.id)).toBe(false);
+  });
+  it('rejects ambiguous areas and preserves legacy sum behavior', () => {
+    measures.setState({ measurements: [line('a', 20), line('b', 30), line('c', 40)] });
+    expect(measures.getState().combineMeasurements(['a', 'b', 'c'], 'area').ok).toBe(false);
+    const sum = measures.getState().combineMeasurements(['a', 'b']);
+    expect(sum.ok).toBe(true);
+    if (sum.ok) expect((measures.getState().measurements.find(m => m.id === sum.id) as Measurement).pixelLength).toBe(50);
+    measures.getState().updateMeasurement('b', { surfaceId: 'different' });
+    expect(measures.getState().combineMeasurements(['a', 'b'], 'area').ok).toBe(false);
+  });
   it('only shifts measurements belonging to the cropped source', () => {
     measures.setState({ measurements: [line('a', 10, { surfaceId: 'image-a' }), line('b', 10, { surfaceId: 'image-b' })] });
     measures.getState().adjustAllCoordinates(-5, -3, 'image-a');
