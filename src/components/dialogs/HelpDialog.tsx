@@ -35,8 +35,7 @@ export function HelpDialog() {
             </span>
             <span>
               <strong className="text-foreground">Draw a reference line</strong>{' '}
-              — click Reference (or press R), then draw a line over a known
-              dimension in the image
+              — click Reference (or press R), then click the start and end of a known dimension
             </span>
           </li>
           <li className="flex gap-3">
@@ -54,15 +53,14 @@ export function HelpDialog() {
             </span>
             <span>
               <strong className="text-foreground">Measure anything</strong> —
-              click Measure (or press M), draw lines, and the real dimensions
-              are calculated automatically!
+              click Measure (or press M), then click a start and end point. Press Esc to cancel.
             </span>
           </li>
         </ol>
         <div className="mt-4 rounded-lg bg-card p-3 text-xs text-muted-foreground">
           <strong className="text-foreground">Pro tips:</strong> Press A to measure
           angles (click vertex, then two arm endpoints). Hold Shift for
-          perfectly horizontal/vertical lines. Scroll to zoom. Middle-click to
+          perfectly horizontal/vertical lines. Ctrl + scroll or Ctrl +/− to zoom, including while measuring. Middle-click to
           pan. Pinch to zoom on touch devices. Double-click a name to rename it.
         </div>
         <Button onClick={() => setOpen(false)} className="mt-2 w-full">

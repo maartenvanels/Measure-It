@@ -2,6 +2,7 @@
 
 import { useCallback } from 'react';
 import { useSceneObjectStore } from '@/stores/useSceneObjectStore';
+import { createAssetUrl } from '@/lib/runtime-assets';
 
 const MODEL_EXTENSIONS: Record<string, 'glb' | 'stl'> = {
   '.glb': 'glb',
@@ -26,8 +27,9 @@ export function use3DModelLoader() {
       const fileType = getModelFileType(file.name);
       if (!fileType) return;
 
-      const url = URL.createObjectURL(file);
-      addModel(url, file.name, fileType);
+      const url = createAssetUrl(file);
+      const id = addModel(url, file.name, fileType);
+      useSceneObjectStore.getState().updateObject(id, { modelBlob: file });
     },
     [addModel]
   );

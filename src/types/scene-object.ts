@@ -26,6 +26,7 @@ export interface SceneObject {
 
   // Model-specific
   modelUrl?: string;
+  modelBlob?: Blob;
   modelFileType?: ModelFileType;
 
   // Transform
@@ -50,6 +51,8 @@ export interface SerializedSceneObject {
   name: string;
   imageDataUrl?: string;
   modelFileType?: ModelFileType;
+  modelBlob?: Blob;
+  modelDataUrl?: string;
   transform: ObjectTransform;
   visible: boolean;
   locked: boolean;

@@ -26,7 +26,7 @@ export function calcRealDistance(
   refUnit: Unit,
   displayUnit?: Unit
 ): string | null {
-  if (!reference || !refValue || refValue <= 0) return null;
+  if (!reference || !Number.isFinite(refValue) || refValue <= 0 || !Number.isFinite(reference.pixelLength) || reference.pixelLength <= 0 || !Number.isFinite(pixelLength)) return null;
   const ratio = refValue / reference.pixelLength;
   let realDist = pixelLength * ratio;
   const unit = displayUnit ?? refUnit;
@@ -41,7 +41,7 @@ export function calcRealValue(
   reference: Measurement | undefined,
   refValue: number
 ): number | null {
-  if (!reference || !refValue || refValue <= 0) return null;
+  if (!reference || !Number.isFinite(refValue) || refValue <= 0 || !Number.isFinite(reference.pixelLength) || reference.pixelLength <= 0 || !Number.isFinite(pixelLength)) return null;
   const ratio = refValue / reference.pixelLength;
   return pixelLength * ratio;
 }
@@ -53,7 +53,7 @@ export function calcRealArea(
   refUnit: Unit,
   displayUnit?: Unit
 ): string | null {
-  if (!reference) return null;
+  if (!reference || !Number.isFinite(refValue) || refValue <= 0 || !Number.isFinite(reference.pixelLength) || reference.pixelLength <= 0 || !Number.isFinite(pixelArea)) return null;
   const scale = refValue / reference.pixelLength;
   let realArea = pixelArea * scale * scale;
   const unit = displayUnit ?? refUnit;

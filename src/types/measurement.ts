@@ -1,9 +1,14 @@
 export type MeasurementType = 'reference' | 'measure' | 'angle' | 'area' | 'annotation';
 export type DrawMode =
   | 'none'
-  | 'reference' | 'measure' | 'angle'
+  | 'reference' | 'measure' | 'measure-chain' | 'angle'
   | 'area' | 'area-polygon' | 'area-freehand' | 'area-circle-3pt' | 'area-circle-center'
   | 'annotation';
+
+/** Check if a DrawMode is any measure sub-mode (single or chain). */
+export function isMeasureMode(mode: DrawMode): boolean {
+  return mode === 'measure' || mode === 'measure-chain';
+}
 export type Unit = 'mm' | 'cm' | 'm' | 'in' | 'px';
 
 /** Which surface a measurement was drawn on */

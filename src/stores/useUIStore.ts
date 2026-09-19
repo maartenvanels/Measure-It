@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { DrawMode, Point, isAreaMode } from '@/types/measurement';
+import { DrawMode, Point, isAreaMode, isMeasureMode } from '@/types/measurement';
 
 interface UIState {
   mode: DrawMode;
@@ -32,6 +32,10 @@ interface UIState {
   // Last-used area tool
   lastAreaTool: DrawMode;
   setLastAreaTool: (mode: DrawMode) => void;
+
+  // Last-used measure tool (single / chain)
+  lastMeasureTool: DrawMode;
+  setLastMeasureTool: (mode: DrawMode) => void;
 
   setMode: (mode: DrawMode) => void;
   toggleMode: (mode: DrawMode) => void;
@@ -117,10 +121,26 @@ export const useUIStore = create<UIState>((set, get) => ({
     try { localStorage.setItem('measureit_last_area_tool', mode); } catch {}
   },
 
+  lastMeasureTool: (() => {
+    if (typeof window === 'undefined') return 'measure' as DrawMode;
+    try {
+      const saved = localStorage.getItem('measureit_last_measure_tool');
+      return (saved as DrawMode) || 'measure';
+    } catch { return 'measure' as DrawMode; }
+  })(),
+
+  setLastMeasureTool: (mode) => {
+    set({ lastMeasureTool: mode });
+    try { localStorage.setItem('measureit_last_measure_tool', mode); } catch {}
+  },
+
   setMode: (mode) => {
     set({ mode });
     if (isAreaMode(mode) && mode !== 'area') {
       get().setLastAreaTool(mode);
+    }
+    if (isMeasureMode(mode)) {
+      get().setLastMeasureTool(mode);
     }
   },
   toggleMode: (mode) => {

@@ -8,13 +8,14 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useMeasurementStore } from '@/stores/useMeasurementStore';
+import { useDocumentHistory, undoDocument, redoDocument } from '@/lib/document-history';
 
 export function HistoryButtons() {
-  const past = useMeasurementStore((s) => s.past);
-  const future = useMeasurementStore((s) => s.future);
+  const past = useDocumentHistory((s) => s.past);
+  const future = useDocumentHistory((s) => s.future);
   const measurements = useMeasurementStore((s) => s.measurements);
-  const undo = useMeasurementStore((s) => s.undo);
-  const redo = useMeasurementStore((s) => s.redo);
+  const undo = undoDocument;
+  const redo = redoDocument;
   const clearAll = useMeasurementStore((s) => s.clearAll);
 
   return (
@@ -26,6 +27,7 @@ export function HistoryButtons() {
             size="icon"
             className="h-8 w-8"
             onClick={undo}
+            aria-label="Undo"
             disabled={past.length === 0}
           >
             <Undo2 className="h-4 w-4" />
@@ -40,6 +42,7 @@ export function HistoryButtons() {
             size="icon"
             className="h-8 w-8"
             onClick={redo}
+            aria-label="Redo"
             disabled={future.length === 0}
           >
             <Redo2 className="h-4 w-4" />

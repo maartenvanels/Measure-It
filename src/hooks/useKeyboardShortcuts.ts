@@ -4,18 +4,33 @@ import { useEffect } from 'react';
 import { useUIStore } from '@/stores/useUIStore';
 import { useMeasurementStore } from '@/stores/useMeasurementStore';
 import { useCanvasStore } from '@/stores/useCanvasStore';
+import { initializeDocumentHistory, undoDocument, redoDocument } from '@/lib/document-history';
+import { useProjectStore } from '@/stores/useProjectStore';
 import { useSceneObjectStore } from '@/stores/useSceneObjectStore';
 
 export function useKeyboardShortcuts() {
   useEffect(() => {
+    initializeDocumentHistory();
+    const cancelTools = () => {
+      const c = useCanvasStore.getState();
+      c.cancelDrawing(); c.cancelDrawing3D(); c.cancelAngle(); c.cancelArea();
+      c.cancelFreehand(); c.cancelCircle3Pt(); c.cancelCircleCenter(); c.setSnapPoint(null);
+    };
+    const stopModes = useUIStore.subscribe((state, previous) => {
+      if (state.mode !== previous.mode || state.cropMode !== previous.cropMode) cancelTools();
+    });
+    const stopSources = useSceneObjectStore.subscribe((state, previous) => {
+      if (state.activeObjectId !== previous.activeObjectId) cancelTools();
+    });
     const handler = (e: KeyboardEvent) => {
+      if (useProjectStore.getState().busy) return;
       // Skip when typing in inputs
       const tag = (e.target as HTMLElement).tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 
       const { toggleMode, selectMeasurement, selectedMeasurementId } =
         useUIStore.getState();
-      const { undo, redo, removeMeasurement } = useMeasurementStore.getState();
+      const { removeMeasurement } = useMeasurementStore.getState();
       const { cancelDrawing, isDrawing, cancelAngle, angleStep, cancelArea, areaPoints, cancelCropDraw, cancelFreehand, isFreehandDrawing, cancelCircle3Pt, circle3PtPoints, cancelCircleCenter, circleCenterPoint } = useCanvasStore.getState();
 
       switch (e.key.toLowerCase()) {
@@ -23,7 +38,10 @@ export function useKeyboardShortcuts() {
           if (!e.ctrlKey && !e.metaKey) toggleMode('reference');
           break;
         case 'm':
-          if (!e.ctrlKey && !e.metaKey) toggleMode('measure');
+          if (!e.ctrlKey && !e.metaKey) {
+            const lastMeasureTool = useUIStore.getState().lastMeasureTool;
+            toggleMode(lastMeasureTool || 'measure');
+          }
           break;
         case 'a':
           if (!e.ctrlKey && !e.metaKey) toggleMode('angle');
@@ -49,6 +67,7 @@ export function useKeyboardShortcuts() {
           }
           break;
         case 'escape':
+          if (useCanvasStore.getState().isDrawing3D) { useCanvasStore.getState().cancelDrawing3D(); break; }
           if (useUIStore.getState().cropMode) {
             cancelCropDraw();
             useUIStore.getState().cancelCrop();
@@ -74,13 +93,10 @@ export function useKeyboardShortcuts() {
         case 'z':
           if (e.ctrlKey || e.metaKey) {
             e.preventDefault();
-            const sceneStore = useSceneObjectStore.getState();
             if (e.shiftKey) {
-              // Redo: scene-object first, then measurement
-              if (!sceneStore.redo()) redo();
+              redoDocument();
             } else {
-              // Undo: scene-object first (most recent transform), then measurement
-              if (!sceneStore.undo()) undo();
+              undoDocument();
             }
           }
           break;
@@ -98,6 +114,6 @@ export function useKeyboardShortcuts() {
     };
 
     window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    return () => { window.removeEventListener('keydown', handler); stopModes(); stopSources(); };
   }, []);
 }

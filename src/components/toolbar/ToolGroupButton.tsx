@@ -30,6 +30,10 @@ interface ToolGroupButtonProps {
   disabled?: boolean;
   activeClassName: string;
   tooltip: string;
+  /** Predicate to decide whether `activeMode` indicates this group is active. Defaults to area-mode check. */
+  isActivePredicate?: (mode: DrawMode) => boolean;
+  /** Tooltip for the chevron dropdown trigger. */
+  dropdownTooltip?: string;
 }
 
 export function ToolGroupButton({
@@ -40,8 +44,10 @@ export function ToolGroupButton({
   disabled,
   activeClassName,
   tooltip,
+  isActivePredicate,
+  dropdownTooltip = 'Area tools',
 }: ToolGroupButtonProps) {
-  const isActive = isAreaMode(activeMode);
+  const isActive = (isActivePredicate ?? isAreaMode)(activeMode);
   const current = tools.find((t) => t.mode === lastUsedMode) ?? tools[0];
   const Icon = current.icon;
 
@@ -76,7 +82,7 @@ export function ToolGroupButton({
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
-          <TooltipContent>Area tools</TooltipContent>
+          <TooltipContent>{dropdownTooltip}</TooltipContent>
         </Tooltip>
         <DropdownMenuContent align="start">
           {tools.map((tool) => {

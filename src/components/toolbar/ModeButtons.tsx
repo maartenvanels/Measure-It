@@ -1,6 +1,6 @@
 'use client';
 
-import { Ruler, PenLine, TriangleRight, Hexagon, StickyNote, Crop, Grid3x3, ChevronDown, Box, Pencil, Circle, CircleDot, Move, RotateCcw, Maximize } from 'lucide-react';
+import { Ruler, PenLine, TriangleRight, Hexagon, StickyNote, Crop, Grid3x3, ChevronDown, Box, Pencil, Circle, CircleDot, Move, RotateCcw, Maximize, Link2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Tooltip,
@@ -19,13 +19,18 @@ import {
 import { useUIStore } from '@/stores/useUIStore';
 import { useSceneObjectStore } from '@/stores/useSceneObjectStore';
 import { ToolGroupButton, type ToolOption } from './ToolGroupButton';
-import { DrawMode } from '@/types/measurement';
+import { DrawMode, isMeasureMode } from '@/types/measurement';
 
 const AREA_TOOLS: ToolOption[] = [
   { mode: 'area-polygon', label: 'Polygon', icon: Hexagon, shortcut: 'P' },
   { mode: 'area-freehand', label: 'Freehand', icon: Pencil },
   { mode: 'area-circle-3pt', label: 'Circle (3pt)', icon: Circle },
   { mode: 'area-circle-center', label: 'Circle (center)', icon: CircleDot },
+];
+
+const MEASURE_TOOLS: ToolOption[] = [
+  { mode: 'measure', label: 'Measure', icon: PenLine, shortcut: 'M' },
+  { mode: 'measure-chain', label: 'Chain', icon: Link2 },
 ];
 
 const GRID_PRESETS = [10, 25, 50, 100, 200, 500];
@@ -35,6 +40,7 @@ export function ModeButtons() {
   const toggleMode = useUIStore((s) => s.toggleMode);
   const setMode = useUIStore((s) => s.setMode);
   const lastAreaTool = useUIStore((s) => s.lastAreaTool);
+  const lastMeasureTool = useUIStore((s) => s.lastMeasureTool);
   const cropMode = useUIStore((s) => s.cropMode);
   const setCropMode = useUIStore((s) => s.setCropMode);
   const gridEnabled = useUIStore((s) => s.gridEnabled);
@@ -70,21 +76,41 @@ export function ModeButtons() {
         </TooltipTrigger>
         <TooltipContent>{is3D ? 'Set reference on 3D model' : 'Draw a reference line (R)'}</TooltipContent>
       </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant={mode === 'measure' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => toggleMode('measure')}
-            disabled={!hasTarget}
-            className={mode === 'measure' ? 'bg-cyan-600 hover:bg-cyan-700 text-white' : ''}
-          >
-            {is3D ? <Ruler className="mr-1.5 h-4 w-4" /> : <PenLine className="mr-1.5 h-4 w-4" />}
-            Measure
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{is3D ? 'Measure distance on 3D model' : 'Draw a measurement line (M)'}</TooltipContent>
-      </Tooltip>
+      {is3D ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={mode === 'measure' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => toggleMode('measure')}
+              disabled={!hasTarget}
+              className={mode === 'measure' ? 'bg-cyan-600 hover:bg-cyan-700 text-white' : ''}
+            >
+              <Ruler className="mr-1.5 h-4 w-4" />
+              Measure
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Measure distance on 3D model</TooltipContent>
+        </Tooltip>
+      ) : (
+        <ToolGroupButton
+          tools={MEASURE_TOOLS}
+          activeMode={mode}
+          lastUsedMode={lastMeasureTool}
+          onSelect={(m: DrawMode) => {
+            if (m === 'none') {
+              setMode('none');
+            } else {
+              toggleMode(m);
+            }
+          }}
+          disabled={!hasTarget}
+          activeClassName="bg-cyan-600 hover:bg-cyan-700 text-white"
+          tooltip="Draw measurement (M) — Chain: click points in sequence, Esc to end"
+          isActivePredicate={isMeasureMode}
+          dropdownTooltip="Measure tools"
+        />
+      )}
 
       {/* 2D-only tools */}
       {!is3D && (
