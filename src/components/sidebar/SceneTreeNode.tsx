@@ -47,6 +47,8 @@ function useDisplayValue(m: AnyMeasurement): string {
   }
   // measure
   const meas = m as Measurement;
+  if (meas.combineOperation === 'area') return calcRealArea(meas.combinedPixelArea ?? 0, reference, referenceValue, referenceUnit, meas.unitOverride)
+    ?? `${(meas.combinedPixelArea ?? 0).toFixed(2)} px²`;
   return calcRealDistance(meas.pixelLength, reference, referenceValue, referenceUnit, meas.unitOverride)
     ?? `${meas.pixelLength.toFixed(1)} px`;
 }

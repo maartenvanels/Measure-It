@@ -49,6 +49,8 @@ export function StatusBar() {
     if (selected.type === 'reference') return `${refValue} ${refUnit} (ref)`;
     if (selected.type === 'measure') {
       const m = selected as Measurement;
+      if (m.combineOperation === 'area') return calcRealArea(m.combinedPixelArea ?? 0, ref, refValue, refUnit, m.unitOverride)
+        ?? `${(m.combinedPixelArea ?? 0).toFixed(2)} px²`;
       return calcRealDistance(m.pixelLength, ref, refValue, refUnit, m.unitOverride)
         ?? `${m.pixelLength.toFixed(1)} px`;
     }

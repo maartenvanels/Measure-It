@@ -4,6 +4,14 @@ import { drawMeasurementLine, drawAngleMeasurement, drawAreaMeasurement, drawCir
 import { calcRealDistance, calcRealArea } from './calculations';
 import { hasLatex, renderNameLabelImage } from './latex-export';
 
+function combinedAreaResult(m: Measurement, ref: Measurement | undefined, refValue: number, refUnit: Unit) {
+  const requestedUnit = m.unitOverride ?? refUnit;
+  if (!ref || requestedUnit === 'px') return { value: m.combinedPixelArea ?? 0, unit: 'px²' };
+  const scale = calcRealValue(1, ref, refValue);
+  const factor = scale == null ? null : convertUnit(scale, refUnit, requestedUnit);
+  return { value: factor == null ? null : (m.combinedPixelArea ?? 0) * factor * factor, unit: requestedUnit + '²' };
+}
+
 /** Resolver function that returns the reference measurement + scale for a given measurement */
 export type RefResolver = (m: AnyMeasurement) => {
   ref: Measurement | undefined;
@@ -39,6 +47,11 @@ export function generateCSV(
   for (const m of measurements) {
     const { ref, refValue, refUnit, objectName } = resolve(m);
     const objCol = objectName ? `"${objectName}"` : '';
+    if (m.type === 'measure' && m.combineOperation === 'area') {
+      const result = combinedAreaResult(m, ref, refValue, refUnit);
+      csv += `"${m.name}",area,${objCol},${m.surface ?? 'image'},"${result.value ?? ''}",${result.unit},,,${m.combinedPixelArea},\n`;
+      continue;
+    }
     if (m.type === 'annotation') {
       const content = (m as Annotation).content.replace(/"/g, '""').slice(0, 100);
       csv += `"${content}",annotation,${objCol},,,,,,,\n`;
@@ -70,6 +83,12 @@ export function generateJSON(
 ): string {
   const data = measurements.map((m) => {
     const { ref, refValue, refUnit, objectName } = resolve(m);
+    if (m.type === 'measure' && m.combineOperation === 'area') {
+      const result = combinedAreaResult(m, ref, refValue, refUnit);
+      return { name: m.name, type: 'area', operation: 'length-times-width', combinedFrom: m.combinedFrom,
+        surface: m.surface ?? 'image', ...(objectName ? { object: objectName } : {}),
+        pixelArea: m.combinedPixelArea, realArea: result.value, unit: result.unit };
+    }
     if (m.type === 'annotation') {
       const ann = m as Annotation;
       return {
@@ -152,6 +171,11 @@ export function generateClipboardText(
   for (const m of measurements) {
     const { ref, refValue, refUnit, objectName } = resolve(m);
     const prefix = objectName ? `[${objectName}] ` : '';
+    if (m.type === 'measure' && m.combineOperation === 'area') {
+      const result = combinedAreaResult(m, ref, refValue, refUnit);
+      text += `  ${prefix}${m.name}: ${result.value?.toFixed(2) ?? '—'} ${result.unit}\n`;
+      continue;
+    }
     if (m.type === 'annotation') {
       const content = (m as Annotation).content.slice(0, 60).replace(/\n/g, ' ');
       text += `  ${prefix}[Note] ${content}\n`;

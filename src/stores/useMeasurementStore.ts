@@ -8,6 +8,7 @@ export function refreshCombinedTotals(items: AnyMeasurement[]): AnyMeasurement[]
     const parts = m.combinedFrom.map((id) => byId.get(id));
     if (parts.some((part) => !part || part.type !== 'measure')) return m;
     const length = parts.reduce((sum, part) => sum + (part as Measurement).pixelLength, 0);
+    if (m.combineOperation === 'area') return { ...m, combinedPixelArea: (parts[0] as Measurement).pixelLength * (parts[1] as Measurement).pixelLength };
     return { ...m, pixelLength: length, ...(m.surface === 'model' ? { distance: length } : {}) };
   });
 }
@@ -27,10 +28,10 @@ interface MeasurementState {
   removeMeasurement: (id: string) => void;
   renameMeasurement: (id: string, name: string) => void;
   /**
-   * Combine 2+ connected measure-type measurements into a virtual total.
-   * Endpoints of the chosen measurements must form a single connected component.
+   * Add lengths, or multiply exactly two dimensions into a rectangular area.
+   * Constituent lines must belong to the same source.
    */
-  combineMeasurements: (ids: string[]) => { ok: true; id: string } | { ok: false; reason: string };
+  combineMeasurements: (ids: string[], operation?: 'sum' | 'area') => { ok: true; id: string } | { ok: false; reason: string };
   setReferenceValue: (value: number) => void;
   setReferenceUnit: (unit: Unit) => void;
   clearAll: () => void;
@@ -141,10 +142,11 @@ export const useMeasurementStore = create<MeasurementState>((set, get) => ({
     });
   },
 
-  combineMeasurements: (ids) => {
+  combineMeasurements: (ids, operation = 'sum') => {
     const { measurements } = get();
     const uniqueIds = Array.from(new Set(ids));
     if (uniqueIds.length < 2) return { ok: false, reason: 'Need at least 2 different measurements' };
+    if (operation === 'area' && uniqueIds.length !== 2) return { ok: false, reason: 'Select exactly two dimensions for length × width' };
 
     const segments = uniqueIds.map((id) => measurements.find((m) => m.id === id));
     if (segments.some((s) => !s)) return { ok: false, reason: 'Measurement not found' };
@@ -168,7 +170,7 @@ export const useMeasurementStore = create<MeasurementState>((set, get) => ({
     const combined: Measurement = {
       id: crypto.randomUUID(),
       type: 'measure',
-      name: `Total ×${meas.length}`,
+      name: operation === 'area' ? 'Area (length × width)' : `Total ×${meas.length}`,
       createdAt: Date.now(),
       surface,
       surfaceId,
@@ -177,6 +179,8 @@ export const useMeasurementStore = create<MeasurementState>((set, get) => ({
       pixelLength: totalPixelLength,
       ...(surface === 'model' ? { distance: totalPixelLength } : {}),
       combinedFrom: uniqueIds,
+      combineOperation: operation,
+      ...(operation === 'area' ? { pixelLength: 0, distance: undefined, combinedPixelArea: meas[0].pixelLength * meas[1].pixelLength } : {}),
     };
 
     const past = [...get().past, [...measurements]].slice(-50);

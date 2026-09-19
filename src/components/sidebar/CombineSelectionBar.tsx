@@ -1,13 +1,16 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Combine, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useUIStore } from '@/stores/useUIStore';
 import { useMeasurementStore } from '@/stores/useMeasurementStore';
 import type { Measurement } from '@/types/measurement';
+import { toast } from 'sonner';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 
 export function CombineSelectionBar() {
+  const [menuOpen, setMenuOpen] = useState(false);
   const selectedIds = useUIStore((s) => s.selectedMeasurementIds);
   const selectMeasurement = useUIStore((s) => s.selectMeasurement);
   const measurements = useMeasurementStore((s) => s.measurements);
@@ -23,11 +26,12 @@ export function CombineSelectionBar() {
 
   if (selectedIds.length === 0) return null;
 
-  const handleCombine = () => {
+  const handleCombine = (operation: 'sum' | 'area') => {
     if (!eligibleIds) return;
-    const result = combineMeasurements(eligibleIds);
+    setMenuOpen(false);
+    const result = combineMeasurements(eligibleIds, operation);
     if (!result.ok) {
-      alert(result.reason);
+      toast.error(result.reason);
       return;
     }
     selectMeasurement(result.id);
@@ -45,17 +49,24 @@ export function CombineSelectionBar() {
         )}
       </span>
       <div className="flex-1" />
-      <Button
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+      <DropdownMenuTrigger asChild><Button
         size="sm"
         variant="outline"
         className="h-7 gap-1.5 text-xs"
         disabled={!eligibleIds}
-        onClick={handleCombine}
-        title={eligibleIds ? `Combine ${eligibleIds.length} into total` : 'Select 2+ measure-type lines (Ctrl+click in sidebar)'}
+        title="Choose sum or area"
       >
         <Combine className="h-3.5 w-3.5" />
         Combine{eligibleIds && eligibleIds.length !== selectedIds.length ? ` (${eligibleIds.length})` : ''}
-      </Button>
+      </Button></DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuLabel>Combine dimensions</DropdownMenuLabel>
+        <DropdownMenuItem onSelect={() => handleCombine('sum')}>Sum — add lengths</DropdownMenuItem>
+        <DropdownMenuItem disabled={eligibleIds?.length !== 2} onSelect={() => handleCombine('area')}>Area — length × width</DropdownMenuItem>
+        <p className="max-w-64 px-2 py-1 text-xs text-muted-foreground">Area assumes a rectangle and requires exactly two dimensions on the same object.</p>
+      </DropdownMenuContent>
+      </DropdownMenu>
       <Button
         size="sm"
         variant="ghost"

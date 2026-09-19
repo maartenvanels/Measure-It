@@ -81,6 +81,9 @@ export interface Measurement {
   surfaceId?: string;
   /** If present, this is a virtual sum of the listed constituent measurement ids. */
   combinedFrom?: string[];
+  /** Missing operation in older projects means sum. Area is length × width. */
+  combineOperation?: 'sum' | 'area';
+  combinedPixelArea?: number;
 }
 
 export interface AngleMeasurement {
