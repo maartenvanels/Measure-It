@@ -5,7 +5,6 @@ import { Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useUIStore } from '@/stores/useUIStore';
 import { useCanvasStore } from '@/stores/useCanvasStore';
-import { useMeasurementStore } from '@/stores/useMeasurementStore';
 import { imageToScreen } from '@/lib/geometry';
 
 interface CropConfirmOverlayProps {
@@ -30,7 +29,6 @@ export function CropConfirmOverlay({ containerRef }: CropConfirmOverlayProps) {
   const handleApply = () => {
     const bounds = cropBounds;
     if (!bounds) return;
-    useMeasurementStore.getState().adjustAllCoordinates(-bounds.x, -bounds.y);
     useCanvasStore.getState().applyCrop(bounds);
     useUIStore.getState().cancelCrop();
     // Fit after a short delay to let the new image load

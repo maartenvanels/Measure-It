@@ -57,12 +57,19 @@ export function useExport() {
   }, []);
 
   const exportImage = useCallback(async () => {
-    const image = useSceneObjectStore.getState().getFirstVisibleImage();
-    if (!image) return;
+    const scene = useSceneObjectStore.getState();
+    const active = scene.getActiveObject();
+    const visibleImages = scene.objects.filter(o => o.type === 'image' && o.visible && o.image);
+    const source = active?.type === 'image' && active.visible ? active : visibleImages.length === 1 ? visibleImages[0] : undefined;
+    if (!source?.image) { toast.info('Select the image you want to export in the scene browser.'); return; }
     const { measurements } = useMeasurementStore.getState();
-    const blob = await renderAnnotatedImage(image, measurements, buildResolver());
-    downloadBlob(blob, 'measurement_image.png');
-    toast.success('Image exported');
+    const imageMeasurements = measurements.filter(m => m.visible !== false && (m.surfaceId === source.id || (!m.surfaceId && visibleImages.length === 1))
+      && !((m.type === 'measure' || m.type === 'reference') && (m.surface === 'model' || m.combinedFrom)));
+    try {
+      const blob = await renderAnnotatedImage(source.image, imageMeasurements, buildResolver());
+      downloadBlob(blob, source.name.replace(/\.[^.]+$/, '') + '-measured.png');
+      toast.success('Selected image exported');
+    } catch { toast.error('Could not export the image.'); }
   }, []);
 
   return { exportCSV, exportJSON, exportClipboard, exportImage };

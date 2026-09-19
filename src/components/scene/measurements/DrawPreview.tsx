@@ -115,7 +115,6 @@ export function DrawPreviewArea({ points, cursorPos }: DrawPreviewAreaProps) {
   const zoom = useThree((s) => (s.camera as THREE.OrthographicCamera).zoom || 1);
   const color = '#10b981';
 
-  if (points.length === 0) return null;
 
   // Build outline including cursor position
   const allPts = cursorPos ? [...points, cursorPos] : points;
@@ -134,6 +133,8 @@ export function DrawPreviewArea({ points, cursorPos }: DrawPreviewAreaProps) {
     shape.closePath();
     return new THREE.ShapeGeometry(shape);
   }, [allPts]);
+
+  if (points.length === 0) return null;
 
   return (
     <group>
@@ -166,7 +167,6 @@ interface DrawPreviewFreehandProps {
 export function DrawPreviewFreehand({ points }: DrawPreviewFreehandProps) {
   const color = '#10b981';
 
-  if (points.length < 2) return null;
 
   const linePoints: [number, number, number][] = points.map(
     (p) => [p.x, -p.y, 0.01] as [number, number, number]
@@ -182,6 +182,8 @@ export function DrawPreviewFreehand({ points }: DrawPreviewFreehandProps) {
     shape.closePath();
     return new THREE.ShapeGeometry(shape);
   }, [points]);
+
+  if (points.length < 2) return null;
 
   return (
     <group>

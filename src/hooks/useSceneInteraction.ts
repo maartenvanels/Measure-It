@@ -7,8 +7,10 @@ import { useCanvasStore } from '@/stores/useCanvasStore';
 import { useUIStore } from '@/stores/useUIStore';
 import { useMeasurementStore } from '@/stores/useMeasurementStore';
 import { useSceneObjectStore } from '@/stores/useSceneObjectStore';
-import { hitToImage, snapToAxis, snapToGrid, pixelDist, getAllEndpoints } from '@/lib/geometry';
+import { snapToAxis, snapToGrid, pixelDist, getAllEndpoints } from '@/lib/geometry';
 import { Point, Annotation, Measurement, AnyMeasurement } from '@/types/measurement';
+import { beginDocumentEdit, endDocumentEdit } from '@/lib/document-history';
+import { hitSourceId, localPoint, sourceMatrix } from '@/lib/source-coordinates';
 
 /**
  * Find nearest snap point in image space.
@@ -83,8 +85,15 @@ export function useSceneInteraction() {
     const rect = renderer.domElement.getBoundingClientRect();
     const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-    const worldPos = new THREE.Vector3(ndcX, ndcY, 0).unproject(cam);
-    return { x: worldPos.x, y: -worldPos.y };
+    const source = useSceneObjectStore.getState().getActiveObject();
+    const matrix = source ? sourceMatrix(source.transform) : new THREE.Matrix4();
+    const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0).applyMatrix4(matrix);
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2(ndcX, ndcY), cam);
+    const world = ray.ray.intersectPlane(plane, new THREE.Vector3());
+    if (!world) return { x: 0, y: 0 };
+    const p = localPoint(world, source);
+    return { x: p.x, y: -p.y };
   }
 
   function getZoom(): number {
@@ -94,7 +103,7 @@ export function useSceneInteraction() {
   /** Get image point with snap-to-point and grid snap applied */
   function getSnappedPoint(imgPt: Point, excludeId?: string): Point {
     const z = getZoom();
-    const measurements = useMeasurementStore.getState().measurements;
+    const measurements = activeMeasurements();
 
     // Priority 1: snap to existing endpoints
     const snap = findSnapWorld(imgPt, measurements, z, 12, excludeId);
@@ -119,7 +128,7 @@ export function useSceneInteraction() {
 
   /** Snap with support for grid/endpoints (for drag operations) */
   function snapDragPoint(point: Point, z: number, excludeId?: string): { snapped: Point; didSnap: boolean } {
-    const measurements = useMeasurementStore.getState().measurements;
+    const measurements = activeMeasurements();
     const snap = findSnapWorld(point, measurements, z, 12, excludeId);
     if (snap) return { snapped: snap, didSnap: true };
 
@@ -140,11 +149,13 @@ export function useSceneInteraction() {
       window.removeEventListener('pointermove', domHandlers.current.move);
       window.removeEventListener('pointerup', domHandlers.current.up);
       domHandlers.current = null;
+      endDocumentEdit();
     }
   }
 
   function startDomTracking() {
     stopDomTracking();
+    beginDocumentEdit();
 
     const onMove = (e: PointerEvent) => {
       const imgPt = domEventToImage(e);
@@ -289,9 +300,25 @@ export function useSceneInteraction() {
 
   // ---- ThreeEvent handlers for ImagePlane ----
 
+  function activeMeasurements() {
+    const id = useSceneObjectStore.getState().activeObjectId;
+    return useMeasurementStore.getState().measurements.filter(m => m.visible !== false && (m.surfaceId === id || (!m.surfaceId && useSceneObjectStore.getState().getImages().length === 1)));
+  }
+  function eventPoint(e: ThreeEvent<PointerEvent>, select = false): Point | null {
+    const id = hitSourceId(e.object);
+    const scene = useSceneObjectStore.getState();
+    if (!select && id !== scene.activeObjectId) return null;
+    const source = scene.objects.find(o => o.id === id);
+    if (select && id) scene.setActiveObject(id);
+    const p = localPoint(e.point, source);
+    return { x: p.x, y: -p.y };
+  }
+
   const onPointerDown = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
-      const imgPt = hitToImage(e.point);
+      if (e.button !== 0) return;
+      const imgPt = eventPoint(e, true);
+      if (!imgPt) return;
       const mode = useUIStore.getState().mode;
       const z = (cameraRef.current as THREE.OrthographicCamera).zoom || 1;
       const threshold = 12 / z;
@@ -318,8 +345,8 @@ export function useSceneInteraction() {
       // Navigate mode: check for endpoint / arrow-target drag
       if (e.button === 0 && mode === 'none') {
         // Arrow targets
-        const annotations = useMeasurementStore.getState().measurements.filter(
-          (m): m is Annotation => m.type === 'annotation' && !!m.arrowTarget,
+        const annotations = activeMeasurements().filter(
+          (m): m is Annotation => m.type === 'annotation' && !!m.arrowTarget && !m.locked,
         );
         for (const ann of annotations) {
           if (pixelDist(imgPt, ann.arrowTarget!) < threshold) {
@@ -335,8 +362,8 @@ export function useSceneInteraction() {
         }
 
         // Measurement line endpoints
-        const lines = useMeasurementStore.getState().measurements.filter(
-          (m): m is Measurement => m.type === 'reference' || m.type === 'measure',
+        const lines = activeMeasurements().filter(
+          (m): m is Measurement => (m.type === 'reference' || m.type === 'measure') && m.surface !== 'model' && !m.locked && !m.combinedFrom,
         );
         for (const line of lines) {
           for (const ep of ['start', 'end'] as const) {
@@ -451,11 +478,40 @@ export function useSceneInteraction() {
         return;
       }
 
-      // Reference / Measure line mode (press-drag-release)
-      if (e.button === 0 && (mode === 'reference' || mode === 'measure')) {
+      // Reference / Measure (single + chain) — click-click:
+      // first click sets the start, second click finalises the segment.
+      // In chain mode, finishing one segment immediately primes the next from
+      // the just-placed point.
+      if (e.button === 0 && (mode === 'reference' || mode === 'measure' || mode === 'measure-chain')) {
         const snapped = getSnappedPoint(imgPt);
-        useCanvasStore.getState().startDrawing(snapped);
-        startDomTracking();
+        const state = useCanvasStore.getState();
+        if (!state.isDrawing) {
+          state.startDrawing(snapped);
+        } else {
+          state.updateDrawing(snapped, e.nativeEvent.shiftKey);
+          const result = state.finishDrawing();
+          if (result && pixelDist(result.start, result.end) > 0.5) {
+            const mStore = useMeasurementStore.getState();
+            const activeId = useSceneObjectStore.getState().activeObjectId;
+            const name = mode === 'reference'
+              ? 'Reference'
+              : `Measurement ${mStore.getMeasureCount('image', activeId ?? undefined) + 1}`;
+            mStore.addMeasurement({
+              id: crypto.randomUUID(),
+              type: mode === 'reference' ? 'reference' : 'measure',
+              start: result.start,
+              end: result.end,
+              pixelLength: result.pixelLength,
+              name,
+              createdAt: Date.now(),
+              surfaceId: activeId ?? undefined,
+            });
+          }
+          // Continue chain from the just-placed point; single mode exits.
+          if (mode === 'measure-chain') {
+            state.startDrawing(result?.end ?? snapped);
+          }
+        }
         return;
       }
     },
@@ -465,7 +521,8 @@ export function useSceneInteraction() {
   /** Pointer move on the ImagePlane mesh — for snap feedback and draw previews */
   const onPointerMove = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
-      const imgPt = hitToImage(e.point);
+      const imgPt = eventPoint(e);
+      if (!imgPt) return;
       const mode = useUIStore.getState().mode;
       const state = useCanvasStore.getState();
 

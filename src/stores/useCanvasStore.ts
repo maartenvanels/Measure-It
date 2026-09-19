@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { Point, Point3D, ViewTransform, AngleMeasurement, AreaMeasurement } from '@/types/measurement';
 import { pixelDist, snapToAxis, calcAngleDeg, calcPolygonArea, circumscribedCircle, circleArea, simplifyPath } from '@/lib/geometry';
 import { useSceneObjectStore } from './useSceneObjectStore';
+import { useMeasurementStore } from './useMeasurementStore';
 
 interface CanvasState {
   transform: ViewTransform;
@@ -470,7 +471,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const dataUrl = tempCanvas.toDataURL('image/png');
     const newImg = new window.Image();
     newImg.onload = () => {
+      if (useSceneObjectStore.getState().objects.find(o => o.id === activeObj.id)?.image !== image) return;
       sceneStore.updateObject(activeObj.id, { image: newImg, imageDataUrl: dataUrl });
+      useMeasurementStore.getState().adjustAllCoordinates(-bounds.x, -bounds.y, activeObj.id);
     };
     newImg.src = dataUrl;
   },

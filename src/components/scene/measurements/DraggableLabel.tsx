@@ -4,6 +4,7 @@ import { useRef, useCallback } from 'react';
 import { Html } from '@react-three/drei';
 import { Point } from '@/types/measurement';
 import { useMeasurementStore } from '@/stores/useMeasurementStore';
+import { beginDocumentEdit, endDocumentEdit } from '@/lib/document-history';
 
 interface DraggableLabelProps {
   measurementId: string;
@@ -25,6 +26,7 @@ export function DraggableLabel({ measurementId, position, offset, labelType, chi
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    beginDocumentEdit();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     dragRef.current = {
       startX: e.clientX,
@@ -44,6 +46,7 @@ export function DraggableLabel({ measurementId, position, offset, labelType, chi
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     dragRef.current = null;
+    endDocumentEdit();
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
   }, []);
 
@@ -56,6 +59,7 @@ export function DraggableLabel({ measurementId, position, offset, labelType, chi
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
         style={{
           transform: `translate(${ox}px, ${oy}px)`,
           cursor: 'grab',

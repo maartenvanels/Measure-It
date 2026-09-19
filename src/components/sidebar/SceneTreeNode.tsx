@@ -124,13 +124,14 @@ export function SceneTreeNode({ measurement: m }: Props) {
           onClick={(e) => e.stopPropagation()}
         />
       ) : (
-        <span className="flex-1 truncate">{displayName}</span>
+        <span className="min-w-0 flex-1 truncate" title={displayName}>{displayName}</span>
       )}
 
       {/* Value */}
       {m.type !== 'annotation' && (
         <span
           className="flex-shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground"
+          title={displayValue}
         >
           {displayValue}
         </span>

@@ -1,6 +1,17 @@
 import { create } from 'zustand';
 import { Measurement, AngleMeasurement, AreaMeasurement, Annotation, AnyMeasurement, MeasurementSurface, Unit } from '@/types/measurement';
 
+export function refreshCombinedTotals(items: AnyMeasurement[]): AnyMeasurement[] {
+  const byId = new Map(items.map((m) => [m.id, m]));
+  return items.map((m) => {
+    if (m.type !== 'measure' || !m.combinedFrom) return m;
+    const parts = m.combinedFrom.map((id) => byId.get(id));
+    if (parts.some((part) => !part || part.type !== 'measure')) return m;
+    const length = parts.reduce((sum, part) => sum + (part as Measurement).pixelLength, 0);
+    return { ...m, pixelLength: length, ...(m.surface === 'model' ? { distance: length } : {}) };
+  });
+}
+
 interface MeasurementState {
   measurements: AnyMeasurement[];
   referenceValue: number;
@@ -35,7 +46,7 @@ interface MeasurementState {
   toggleVisibility: (id: string) => void;
   toggleLocked: (id: string) => void;
   setGroupVisibility: (ids: string[], visible: boolean) => void;
-  adjustAllCoordinates: (dx: number, dy: number) => void;
+  adjustAllCoordinates: (dx: number, dy: number, surfaceId?: string) => void;
 }
 
 export const useMeasurementStore = create<MeasurementState>((set, get) => ({
@@ -99,9 +110,9 @@ export const useMeasurementStore = create<MeasurementState>((set, get) => ({
     const { measurements } = get();
     const past = [...get().past, [...measurements]].slice(-50);
     set({
-      measurements: measurements.map((m) =>
+      measurements: refreshCombinedTotals(measurements.map((m) =>
         m.id === id ? { ...m, ...patch } as AnyMeasurement : m
-      ),
+      )),
       past,
       future: [],
     });
@@ -153,11 +164,11 @@ export const useMeasurementStore = create<MeasurementState>((set, get) => ({
     }
 
     const totalPixelLength = meas.reduce((sum, m) => sum + m.pixelLength, 0);
-    const names = meas.map((m, i) => m.name || `M${i + 1}`).join(' + ');
+    // Short name; expand the sub-tree in the sidebar to see which segments make up the total.
     const combined: Measurement = {
       id: crypto.randomUUID(),
       type: 'measure',
-      name: `Total (${names})`,
+      name: `Total ×${meas.length}`,
       createdAt: Date.now(),
       surface,
       surfaceId,
@@ -291,10 +302,11 @@ export const useMeasurementStore = create<MeasurementState>((set, get) => ({
     });
   },
 
-  adjustAllCoordinates: (dx, dy) => {
+  adjustAllCoordinates: (dx, dy, surfaceId) => {
     const { measurements } = get();
     const past = [...get().past, [...measurements]].slice(-50);
     const adjusted = measurements.map((m) => {
+      if (surfaceId !== undefined && m.surfaceId !== surfaceId) return m;
       if (m.type === 'annotation') {
         return {
           ...m,

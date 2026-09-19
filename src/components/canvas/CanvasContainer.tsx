@@ -6,7 +6,12 @@ import { useSceneObjectStore } from '@/stores/useSceneObjectStore';
 import { useImageLoader } from '@/hooks/useImageLoader';
 import { use3DModelLoader, isModelFile } from '@/hooks/use3DModelLoader';
 import { DropZone } from './DropZone';
-import { UnifiedScene } from '@/components/scene/UnifiedScene';
+import dynamic from 'next/dynamic';
+
+const UnifiedScene = dynamic(
+  () => import('@/components/scene/UnifiedScene').then((module) => module.UnifiedScene),
+  { ssr: false, loading: () => <div className="p-6 text-sm text-muted-foreground">Loading viewer…</div> },
+);
 
 export function CanvasContainer() {
   const containerRef = useRef<HTMLDivElement>(null);

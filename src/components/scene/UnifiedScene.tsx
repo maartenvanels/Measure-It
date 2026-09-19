@@ -13,6 +13,9 @@ import { DEFAULT_COLORS } from '@/lib/canvas-rendering';
 import { calcRealDistance, calcRealArea } from '@/lib/calculations';
 import { SceneControls, useImageCamera } from './SceneControls';
 import { SceneObjectRenderer } from './SceneObjectRenderer';
+import { SourceTransform } from './SourceTransform';
+import { hitSourceId, localPoint, sourceMatrix } from '@/lib/source-coordinates';
+import { beginDocumentEdit, endDocumentEdit } from '@/lib/document-history';
 import { MeasurementLineComponent } from './measurements/MeasurementLine';
 import { AngleMeasurementComponent } from './measurements/AngleMeasurement';
 import { AreaMeasurementComponent } from './measurements/AreaMeasurement';
@@ -111,6 +114,7 @@ function DraggableLabel({ measurementId, position, offset, labelType, children, 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    beginDocumentEdit();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     dragRef.current = {
       startX: e.clientX,
@@ -130,6 +134,7 @@ function DraggableLabel({ measurementId, position, offset, labelType, children, 
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     dragRef.current = null;
+    endDocumentEdit();
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
   }, []);
 
@@ -274,8 +279,14 @@ function findSnap3D(
 ): Point3D | null {
   const endpoints: Point3D[] = [];
   for (const m of modelMeasurements) {
-    if (m.start3D) endpoints.push(m.start3D);
-    if (m.end3D) endpoints.push(m.end3D);
+    const source = useSceneObjectStore.getState().objects.find(o => o.id === m.surfaceId);
+    const matrix = source ? sourceMatrix(source.transform) : new THREE.Matrix4();
+    for (const p of [m.start3D, m.end3D]) {
+      if (p) {
+        const v = new THREE.Vector3(p.x, p.y, p.z).applyMatrix4(matrix);
+        endpoints.push({ x: v.x, y: v.y, z: v.z });
+      }
+    }
   }
   if (endpoints.length === 0) return null;
   const canvasRect = gl.domElement.getBoundingClientRect();
@@ -301,6 +312,7 @@ function findSnap3D(
 // ---- Image measurement layer (2D measurements + draw previews) ----
 
 function ImageMeasurementLayer() {
+  const objects = useSceneObjectStore(s => s.objects);
   const firstImage = useSceneObjectStore((s) => {
     const img = s.objects.find((o) => o.type === 'image' && o.visible);
     return img?.image ?? null;
@@ -332,12 +344,12 @@ function ImageMeasurementLayer() {
 
   // Per-object reference: resolve from scene object when surfaceId is present
   const getRefForMeasurement = useCallback((m: AnyMeasurement) => {
-    const obj = m.surfaceId ? useSceneObjectStore.getState().getObject(m.surfaceId) : undefined;
+    const obj = objects.find(o => o.id === m.surfaceId);
     const refValue = obj?.referenceValue ?? globalRefValue;
     const refUnit = obj?.referenceUnit ?? globalRefUnit;
     const ref = getReference('image', m.surfaceId);
     return { ref, refValue, refUnit };
-  }, [getReference, globalRefValue, globalRefUnit]);
+  }, [getReference, globalRefValue, globalRefUnit, objects]);
 
   const getLabel = useCallback((m: AnyMeasurement): string => {
     const { ref, refValue, refUnit } = getRefForMeasurement(m);
@@ -400,6 +412,7 @@ function ImageMeasurementLayer() {
 
       {/* Existing 2D measurements */}
       {measurements2D.map((m) => {
+        const renderMeasurement = () => {
         if (m.type === 'reference' || m.type === 'measure') {
           return (
             <MeasurementLineComponent
@@ -441,8 +454,11 @@ function ImageMeasurementLayer() {
           );
         }
         return null;
+        };
+        return <SourceTransform key={m.id} sourceId={m.surfaceId}>{renderMeasurement()}</SourceTransform>;
       })}
 
+      <SourceTransform sourceId={activeObjectId ?? undefined}>
       {/* In-progress line drawing */}
       {isDrawing && drawStart && drawCurrent && (
         <DrawPreviewLine start={drawStart} end={drawCurrent} mode={mode} label={inProgressLabel} />
@@ -475,6 +491,7 @@ function ImageMeasurementLayer() {
 
       {/* Snap indicator */}
       {snapPoint && <SnapIndicator point={snapPoint} />}
+      </SourceTransform>
     </>
   );
 }
@@ -482,6 +499,8 @@ function ImageMeasurementLayer() {
 // ---- Model measurement layer (3D measurements + draw previews) ----
 
 function ModelMeasurementLayer({ modelScale }: { modelScale: number }) {
+  const activeId = useSceneObjectStore(s => s.activeObjectId);
+  const objects = useSceneObjectStore(s => s.objects);
   const draw3DStart = useCanvasStore((s) => s.draw3DStart);
   const draw3DCurrent = useCanvasStore((s) => s.draw3DCurrent);
   const isDrawing3D = useCanvasStore((s) => s.isDrawing3D);
@@ -510,7 +529,7 @@ function ModelMeasurementLayer({ modelScale }: { modelScale: number }) {
 
   const getLabel = useCallback(
     (m: Measurement) => {
-      const obj = m.surfaceId ? useSceneObjectStore.getState().getObject(m.surfaceId) : undefined;
+      const obj = objects.find(o => o.id === m.surfaceId);
       const refValue = obj?.referenceValue ?? globalRefValue;
       const refUnit = obj?.referenceUnit ?? globalRefUnit;
       if (m.type === 'reference') {
@@ -520,12 +539,13 @@ function ModelMeasurementLayer({ modelScale }: { modelScale: number }) {
       const result = calcRealDistance(m.pixelLength, ref, refValue, refUnit, m.unitOverride);
       return result ?? (m.distance?.toFixed(4) ?? '');
     },
-    [getReference, globalRefValue, globalRefUnit]
+    [getReference, globalRefValue, globalRefUnit, objects]
   );
 
   return (
     <>
       {isDrawing3D && draw3DStart && draw3DCurrent && (
+        <SourceTransform sourceId={activeId ?? undefined}>
         <DrawPreview3D
           start={draw3DStart}
           current={draw3DCurrent}
@@ -534,9 +554,11 @@ function ModelMeasurementLayer({ modelScale }: { modelScale: number }) {
           gapSize={gapSize}
           showAxis={showAxisDistances}
         />
+        </SourceTransform>
       )}
 
       {modelMeasurements.map((m) => (
+        <SourceTransform key={m.id} sourceId={m.surfaceId}>
         <MeasurementLine3D
           key={m.id}
           measurement={m}
@@ -547,6 +569,7 @@ function ModelMeasurementLayer({ modelScale }: { modelScale: number }) {
           dashSize={dashSize}
           gapSize={gapSize}
         />
+        </SourceTransform>
       ))}
     </>
   );
@@ -619,7 +642,7 @@ function UnifiedSceneContent() {
         x: ((e.clientX - canvasRect.left) / canvasRect.width) * 2 - 1,
         y: -((e.clientY - canvasRect.top) / canvasRect.height) * 2 + 1,
       };
-      const snapped = findSnap3D(mouseNDC, modelMeasurements, camera, gl);
+      const snapped = findSnap3D(mouseNDC, modelMeasurements.filter(m => m.surfaceId === hitSourceId(e.object)), camera, gl);
       if (snapped) { setIsSnapped(true); return snapped; }
       setIsSnapped(false);
       return surfacePoint;
@@ -630,12 +653,17 @@ function UnifiedSceneContent() {
   const handleModelPointerDown = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
       const isMeasuring3D = mode === 'reference' || mode === 'measure';
-      if (!isMeasuring3D) return;
+      if (!isMeasuring3D || e.button !== 0) return;
       e.stopPropagation();
+      const sourceId = hitSourceId(e.object);
+      if (!sourceId) return;
+      useSceneObjectStore.getState().setActiveObject(sourceId);
+      const source = useSceneObjectStore.getState().getObject(sourceId);
       const surfacePoint: Point3D = { x: e.point.x, y: e.point.y, z: e.point.z };
-      const point = trySnap3D(surfacePoint, e);
+      const local = localPoint(trySnap3D(surfacePoint, e), source);
+      const point = { x: local.x, y: local.y, z: local.z };
 
-      if (!isDrawing3D) {
+      if (!useCanvasStore.getState().isDrawing3D) {
         startDrawing3D(point);
       } else {
         useCanvasStore.getState().updateDrawing3D(point);
@@ -674,7 +702,10 @@ function UnifiedSceneContent() {
       const surfacePoint: Point3D = { x: e.point.x, y: e.point.y, z: e.point.z };
       const point = trySnap3D(surfacePoint, e);
       setHoverPoint(point);
-      if (isDrawing3D) useCanvasStore.getState().updateDrawing3D(point);
+      if (isDrawing3D && hitSourceId(e.object) === useSceneObjectStore.getState().activeObjectId) {
+        const local = localPoint(point, useSceneObjectStore.getState().getActiveObject());
+        useCanvasStore.getState().updateDrawing3D({ x: local.x, y: local.y, z: local.z });
+      }
     },
     [mode, isDrawing3D, trySnap3D]
   );
@@ -824,6 +855,11 @@ export function UnifiedScene() {
       </Canvas>
 
       {hasModels && <AxisDistanceToggle />}
+      <div className="absolute bottom-4 left-4 flex items-center gap-1 rounded-lg border border-border bg-background/95 p-1 shadow">
+        <button type="button" aria-label="Zoom out" title="Zoom out (Ctrl −)" className="h-9 w-9 rounded hover:bg-accent" onClick={() => window.dispatchEvent(new CustomEvent('measureit:zoom', { detail: 1 / 1.25 }))}>−</button>
+        <button type="button" aria-label="Zoom in" title="Zoom in (Ctrl +)" className="h-9 w-9 rounded hover:bg-accent" onClick={() => window.dispatchEvent(new CustomEvent('measureit:zoom', { detail: 1.25 }))}>+</button>
+        <span className="px-2 text-[11px] text-muted-foreground">Ctrl + scroll</span>
+      </div>
     </div>
   );
 }

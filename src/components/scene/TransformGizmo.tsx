@@ -4,6 +4,8 @@ import { useEffect, useCallback, useRef } from 'react';
 import { TransformControls } from '@react-three/drei';
 import { useSceneObjectStore } from '@/stores/useSceneObjectStore';
 import type { Event as ThreeEvent } from 'three';
+import { beginDocumentEdit, endDocumentEdit } from '@/lib/document-history';
+import { useUIStore } from '@/stores/useUIStore';
 
 /**
  * Renders a TransformControls gizmo on the currently selected scene object.
@@ -11,6 +13,7 @@ import type { Event as ThreeEvent } from 'three';
  * Updates object transform on change. Skips locked objects.
  */
 export function TransformGizmo() {
+  const drawingMode = useUIStore((s) => s.mode);
   const selectedObjectId = useSceneObjectStore((s) => s.selectedObjectId);
   const transformMode = useSceneObjectStore((s) => s.transformMode);
   const objectRefs = useSceneObjectStore((s) => s.objectRefs);
@@ -42,16 +45,19 @@ export function TransformGizmo() {
   const handleMouseDown = useCallback(() => {
     if (draggingRef.current) return;
     draggingRef.current = true;
+    beginDocumentEdit();
     pushHistory();
   }, [pushHistory]);
 
   const handleMouseUp = useCallback(() => {
     draggingRef.current = false;
+    endDocumentEdit();
   }, []);
 
   // Keyboard shortcuts for transform modes
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || useUIStore.getState().mode !== 'none') return;
       // Don't trigger in input fields
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       const setMode = useSceneObjectStore.getState().setTransformMode;
@@ -64,7 +70,7 @@ export function TransformGizmo() {
   }, []);
 
   // Don't render if no object selected, object is locked, or no ref available
-  if (!selectedObjectId || !target || isLocked || !isVisible) return null;
+  if (drawingMode !== 'none' || !selectedObjectId || !target || isLocked || !isVisible) return null;
 
   return (
     <TransformControls

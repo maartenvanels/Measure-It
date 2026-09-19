@@ -1,5 +1,5 @@
 import { Measurement, AngleMeasurement, AreaMeasurement, Annotation, AnyMeasurement, Unit } from '@/types/measurement';
-import { calcRealValue } from './calculations';
+import { calcRealValue, convertUnit } from './calculations';
 import { drawMeasurementLine, drawAngleMeasurement, drawAreaMeasurement, drawCircleAreaMeasurement, drawFreehandAreaMeasurement, drawAnnotationLeader, drawLabel } from './canvas-rendering';
 import { calcRealDistance, calcRealArea } from './calculations';
 import { hasLatex, renderNameLabelImage } from './latex-export';
@@ -55,7 +55,7 @@ export function generateCSV(
       const unit = meas.unitOverride ?? refUnit;
       const real =
         m.type === 'reference'
-          ? `${refValue}`
+          ? `${convertUnit(refValue, refUnit, unit)}`
           : (calcRealDistance(meas.pixelLength, ref, refValue, refUnit, meas.unitOverride)?.replace(` ${unit}`, '') ?? '');
       const dist3D = meas.distance != null ? meas.distance.toFixed(4) : '';
       csv += `"${m.name}",${m.type},${objCol},${surface},"${real}",${unit},${meas.pixelLength.toFixed(2)},,,${dist3D}\n`;
@@ -112,17 +112,18 @@ export function generateJSON(
     }
     const meas = m as Measurement;
     const surface = meas.surface ?? 'image';
-    const realValue =
+    const rawValue =
       m.type === 'reference'
         ? refValue
         : calcRealValue(meas.pixelLength, ref, refValue);
+    const realValue = rawValue == null ? null : convertUnit(rawValue, refUnit, meas.unitOverride ?? refUnit);
     return {
       name: m.name,
       type: m.type,
       ...(objectName ? { object: objectName } : {}),
       surface,
       pixelLength: Math.round(meas.pixelLength * 100) / 100,
-      realValue: realValue ? Math.round(realValue * 100) / 100 : null,
+      realValue: realValue != null && Number.isFinite(realValue) ? Math.round(realValue * 100) / 100 : null,
       unit: meas.unitOverride ?? refUnit,
       ...(meas.start3D ? {
         coordinates3D: {

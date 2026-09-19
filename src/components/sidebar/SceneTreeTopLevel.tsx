@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight, Eye, EyeOff, Lock, Unlock, ImageIcon, Box, G
 import { useUIStore } from '@/stores/useUIStore';
 import { useSceneObjectStore } from '@/stores/useSceneObjectStore';
 import { useMeasurementStore } from '@/stores/useMeasurementStore';
+import { confirmAction } from '@/components/dialogs/ConfirmActionDialog';
 
 interface Props {
   label: string;
@@ -31,13 +32,13 @@ export function SceneTreeTopLevel({ label, type, objectId, children }: Props) {
   const removeObject = useSceneObjectStore((s) => s.removeObject);
   const measurements = useMeasurementStore((s) => s.measurements);
 
-  const handleDeleteObject = () => {
+  const handleDeleteObject = async () => {
     if (!objectId || locked) return;
     const ownedMeasurements = measurements.filter((m) => m.surfaceId === objectId).length;
     const confirmMsg = ownedMeasurements > 0
       ? `Delete "${label}" and its ${ownedMeasurements} measurement${ownedMeasurements === 1 ? '' : 's'}?`
       : `Delete "${label}"?`;
-    if (!confirm(confirmMsg)) return;
+    if (!await confirmAction(confirmMsg)) return;
     const mStore = useMeasurementStore.getState();
     for (const m of measurements) {
       if (m.surfaceId === objectId) mStore.removeMeasurement(m.id);

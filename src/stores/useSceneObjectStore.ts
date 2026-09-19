@@ -164,8 +164,7 @@ export const useSceneObjectStore = create<SceneObjectState>((set, get) => ({
 
   removeObject: (id) => {
     const { objects, activeObjectId, selectedObjectId } = get();
-    const obj = objects.find((o) => o.id === id);
-    if (obj?.modelUrl) URL.revokeObjectURL(obj.modelUrl);
+    // Asset lifetime is managed by document history, including undo/redo snapshots.
 
     const remaining = objects.filter((o) => o.id !== id);
     set({
@@ -260,10 +259,6 @@ export const useSceneObjectStore = create<SceneObjectState>((set, get) => ({
   hasModels: () => get().objects.some((o) => o.type === 'model'),
 
   reset: () => {
-    const { objects } = get();
-    for (const obj of objects) {
-      if (obj.modelUrl) URL.revokeObjectURL(obj.modelUrl);
-    }
     set({
       objects: [],
       activeObjectId: null,

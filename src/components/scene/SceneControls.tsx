@@ -1,9 +1,11 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useThree } from '@react-three/fiber';
 import { MapControls, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
+import { zoomCameraAt } from '@/lib/view-navigation';
+import { useCanvasStore } from '@/stores/useCanvasStore';
 
 interface SceneControlsProps {
   /** Disable controls (e.g. during drawing) */
@@ -18,11 +20,61 @@ interface SceneControlsProps {
  * - OrbitControls (orbit/3D): full orbit, zoom, pan
  */
 export function SceneControls({ disabled = false, mode }: SceneControlsProps) {
+  const { camera, gl, controls, invalidate } = useThree();
+  const syncView = useCallback(() => {
+    if (!(camera instanceof THREE.OrthographicCamera)) return;
+    const rect = gl.domElement.getBoundingClientRect();
+    const transform = { zoom: camera.zoom, panX: rect.width / 2 - camera.position.x * camera.zoom,
+      panY: rect.height / 2 + camera.position.y * camera.zoom };
+    const previous = useCanvasStore.getState().transform;
+    if (previous.zoom !== transform.zoom || previous.panX !== transform.panX || previous.panY !== transform.panY)
+      useCanvasStore.getState().setTransform(transform);
+  }, [camera, gl]);
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const navigation = controls as unknown as { target: THREE.Vector3; update: () => void } | null;
+    const zoom = (factor: number, x = 0, y = 0) => {
+      if (!navigation?.target) return;
+      zoomCameraAt(camera, navigation.target, new THREE.Vector2(x, y), factor);
+      navigation.update();
+      syncView();
+      invalidate();
+    };
+    const wheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const rect = canvas.getBoundingClientRect();
+      const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? rect.height : 1);
+      zoom(Math.exp(-Math.max(-300, Math.min(300, delta)) * 0.002),
+        2 * (event.clientX - rect.left) / rect.width - 1,
+        1 - 2 * (event.clientY - rect.top) / rect.height);
+    };
+    const key = (event: KeyboardEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      if ((event.target as HTMLElement)?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (!['+', '=', '-'].includes(event.key)) return;
+      event.preventDefault();
+      zoom(event.key === '-' ? 1 / 1.25 : 1.25);
+    };
+    const button = (event: Event) => zoom((event as CustomEvent<number>).detail);
+    canvas.addEventListener('wheel', wheel, { passive: false, capture: true });
+    window.addEventListener('keydown', key);
+    window.addEventListener('measureit:zoom', button);
+    return () => {
+      canvas.removeEventListener('wheel', wheel, true);
+      window.removeEventListener('keydown', key);
+      window.removeEventListener('measureit:zoom', button);
+    };
+  }, [camera, gl, controls, invalidate, syncView]);
   if (mode === 'orbit') {
     return (
       <OrbitControls
         makeDefault
-        enabled={!disabled}
+        enableRotate={!disabled}
+        enablePan={!disabled}
+        zoomToCursor
+        onChange={syncView}
         enableDamping
         dampingFactor={0.1}
       />
@@ -32,7 +84,9 @@ export function SceneControls({ disabled = false, mode }: SceneControlsProps) {
   return (
     <MapControls
       makeDefault
-      enabled={!disabled}
+      enablePan={!disabled}
+      zoomToCursor
+      onChange={syncView}
       enableRotate={false}
       enableDamping={false}
       screenSpacePanning
